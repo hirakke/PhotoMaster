@@ -7,55 +7,111 @@
 
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @State private var text : String = ""
+    @State var selectedItem: PhotosPickerItem?
+    @State var selectedImage: Image? = nil
+    @State private var showAlert: Bool=false
+    
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        VStack {
+            Spacer()
+            imageWithFrame
+            Spacer()
+            TextField("テキストを入力",text: $text)
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .clipShape(.rect(cornerRadius: 10))
+                .padding(.bottom,8)
+            Button{
+                saveEditedImage()
+            }label: {
+                Label("保存する",systemImage: "square.and.arrow.down")
+                    .frame(maxWidth: .infinity, minHeight: 50)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.blue)
+            .disabled(selectedImage == nil)
+        }
+        .padding(.horizontal)
+        .onChange(of: selectedItem,initial: true){
+            loadImage()
+        }
+        .alert(isPresented: $showAlert) {
+                    Alert(title: Text("保存完了"), message: Text("画像がフォトライブラリに保存されました。"), dismissButton: .default(Text("OK")))
+                }
+    }
+        
+        var imageWithFrame: some View {
+            Rectangle()
+                .fill(Color.white)
+                .frame(width: 350,height: 520)
+                .shadow(radius: 10)
+                .overlay{
+                    ZStack{
+                        VStack(spacing: 25){
+                            Rectangle()
+                                .fill(Color.black)
+                                .frame(width: 300, height:400)
+                                .overlay{
+                                    if let displayImage = selectedImage{
+                                        displayImage
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 300,height:400)
+                                            .clipped()//
+                                    }else{
+                                        Image(systemName:"photo")
+                                            .font(.largeTitle)
+                                            .foregroundStyle(.white)
+                                            .padding(20)
+                                            .background(Color.gray.opacity(0.7))
+                                            .clipShape(.circle)
+                                    }
+                                }
+                            Text(text)
+                                .font(.custom("yosugara ver12",size:40))
+                                .foregroundStyle(.black)
+                                .frame(height: 40)
+                        }
+                        PhotosPicker(selection: $selectedItem, matching: .images, photoLibrary: .shared()){
+                            Color.clear
+                                .contentShape(.rect)
+                        }
                     }
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+        }
+        private func loadImage(){
+            guard let item = selectedItem else{return}
+            item.loadTransferable(type: Data.self) {result in
+                switch result{
+                case .success(let data):
+                    if let data = data, let uiImage = UIImage(data: data){
+                        selectedImage = Image(uiImage: uiImage)
+                    }else{
                     }
+                case .failure(let error):
+                    print("画像の読み込みに失敗しました: \(error.localizedDescription)")
                 }
             }
-        } detail: {
-            Text("Select an item")
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+        
+        private func saveEditedImage(){
+            let renderer = ImageRenderer(content: imageWithFrame)
+            renderer.scale = 3
+            
+            if let uiImage = renderer.uiImage{
+                UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
+                showAlert = true
+                selectedItem = nil
+                selectedImage = nil
+                text = ""
             }
         }
     }
-}
 
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
-}
+    #Preview {
+        ContentView()
+    }
